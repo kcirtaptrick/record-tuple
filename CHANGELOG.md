@@ -1,5 +1,12 @@
 # record-tuple
 
+## 2.1.0
+
+### Minor Changes
+
+- 7d5f84d: Extract from kcirtaptrick/js-packages
+- acfe66f: Migrate to vitest and tsdown
+
 ## 2.0.1
 
 ### Patch Changes
