@@ -1,11 +1,19 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
+    "lib": ["esnext"],
+    "types": ["node"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
-    "composite": true
+    "module": "ESNext",
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
   "references": [],
-  "include": ["types.d.ts", "src/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }

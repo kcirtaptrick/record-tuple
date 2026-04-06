@@ -4,13 +4,19 @@
   "description": "Lightweight Record and Tuple data structures",
   "author": "Patrick Wang <patrick.bohan.wang@gmail.com>",
   "homepage": "https://github.com/kcirtaptrick/record-tuple#readme",
-  "main": "./dist/cjs/index.cjs",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
   "exports": {
-    "import": "./dist/esm/index.js",
-    "require": "./dist/cjs/index.cjs",
-    "types": "./dist/types/index.d.ts"
+    "import": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "require": {
+      "types": "./dist/index.d.cts",
+      "default": "./dist/index.cjs"
+    }
   },
-  "types": "./dist/types/index.d.ts",
+  "types": "./dist/index.d.mts",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -22,19 +28,15 @@
     "url": "https://github.com/kcirtaptrick/record-tuple/issues"
   },
   "scripts": {
-    "clean": "rimraf dist && rimraf tsconfig.build.tsbuildinfo",
     "prepack": "yarn build",
-    "build": "yarn clean && yarn compile",
-    "compile": "rollup -c && rm dist/types/*.js && cp \"./package.json\" ./dist/",
-    "test": "uvu -r tsm src .*\\.test\\.ts",
+    "build": "tsdown",
+    "test": "vitest run",
     "lint": "eslint \"./src/**/*.tsx?\" --max-warnings=0"
   },
   "devDependencies": {
-    "@rollup/plugin-typescript": "^11.1.6",
-    "rollup": "^4.22.0",
-    "typescript": "^5.7.3"
-  },
-  "dependencies": {
-    "tslib": "^2.7.0"
+    "@types/node": "^25.5.2",
+    "tsdown": "^0.21.7",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.2"
   }
 }
