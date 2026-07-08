@@ -1,5 +1,11 @@
 # record-tuple
 
+## 2.2.0
+
+### Minor Changes
+
+- 38a9e37: RecordTuple.Map
+
 ## 2.1.0
 
 ### Minor Changes
