@@ -74,6 +74,60 @@ namespace RecordTuple {
       super(message);
     }
   }
+
+  export class Map<
+    const E extends Map.Entry = Map.Entry
+  > extends globalThis.Map<E[0], E[1]> {
+    constructor(entries?: Iterable<E> | null) {
+      super();
+      if (entries)
+        for (const [key, value] of entries) this.set(key, value as never);
+    }
+
+    private resolveKey(key: unknown): any {
+      return key && typeof key === "object" ? deep(key as Input) : key;
+    }
+
+    get<Key extends E[0]>(key: Key): Map.Value<E, Key> | undefined {
+      return super.get(this.resolveKey(key)) as Map.Value<E, Key> | undefined;
+    }
+
+    set<Key extends E[0]>(key: Key, value: Map.Value<E, Key>): this {
+      return super.set(this.resolveKey(key), value);
+    }
+
+    has(key: E[0]): boolean {
+      return super.has(this.resolveKey(key));
+    }
+
+    delete(key: E[0]): boolean {
+      return super.delete(this.resolveKey(key));
+    }
+
+    entries() {
+      return super.entries() as MapIterator<Map.Pair<E>>;
+    }
+
+    [Symbol.iterator]() {
+      return super[Symbol.iterator]() as MapIterator<Map.Pair<E>>;
+    }
+  }
+
+  export namespace Map {
+    export type Entry = readonly [unknown, unknown];
+
+    export type Value<E extends Entry, Key> = E extends unknown
+      ? Key extends E[0]
+        ? E[1]
+        : E[0] extends Key
+        ? E[1]
+        : never
+      : never;
+
+    export type Pair<E extends Entry> = E extends unknown
+      ? [E[0], E[1]]
+      : never;
+  }
 }
 
 export default RecordTuple;

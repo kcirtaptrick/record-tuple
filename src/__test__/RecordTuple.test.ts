@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import Record from "../Record";
 import RecordTuple from "../RecordTuple";
 import Tuple from "../Tuple";
@@ -161,5 +161,194 @@ describe("RecordTuple", () => {
         RecordTuple.CircularReferenceError
       );
     }
+  });
+
+  it(".Map: Looks up structurally equal keys", () => {
+    const map = new RecordTuple.Map();
+
+    map.set({ a: 1 }, "object");
+    map.set([1, 2, 3], "array");
+    map.set({ a: [1, { b: 2 }] }, "mixed");
+
+    expect(map.get({ a: 1 })).toBe("object");
+    expect(map.get([1, 2, 3])).toBe("array");
+    expect(map.get({ a: [1, { b: 2 }] })).toBe("mixed");
+
+    expect(map.get(Record({ a: 1 }))).toBe("object");
+    expect(map.get(Tuple(1, 2, 3))).toBe("array");
+
+    expect(map.has({ a: 1 })).toBe(true);
+    expect(map.has({ a: 2 })).toBe(false);
+    expect(map.size).toBe(3);
+  });
+
+  it(".Map: Overwrites structurally equal keys", () => {
+    const map = new RecordTuple.Map();
+
+    map.set({ a: 1 }, "first");
+    map.set(Record({ a: 1 }), "second");
+
+    expect(map.size).toBe(1);
+    expect(map.get({ a: 1 })).toBe("second");
+  });
+
+  it(".Map: Interns keys on construction", () => {
+    const map = new RecordTuple.Map([
+      [{ a: 1 }, "object"],
+      [[1, 2], "array"],
+    ]);
+
+    expect(map.get({ a: 1 })).toBe("object");
+    expect(map.get([1, 2])).toBe("array");
+    expect([...map.keys()]).toEqual([Record({ a: 1 }), Tuple(1, 2)]);
+    expect([...map.keys()][0]).toBe(Record({ a: 1 }));
+    expect([...map.keys()][1]).toBe(Tuple(1, 2));
+  });
+
+  it(".Map: Deletes by structural key", () => {
+    const map = new RecordTuple.Map<[{ a: number }, string]>([
+      [{ a: 1 }, "value"],
+    ]);
+
+    expect(map.delete({ a: 2 })).toBe(false);
+    expect(map.delete({ a: 1 })).toBe(true);
+    expect(map.size).toBe(0);
+  });
+
+  it(".Map: Keys non-objects by identity", () => {
+    const map = new RecordTuple.Map();
+    const fn = () => {};
+
+    map.set(1, "number");
+    map.set("key", "string");
+    map.set(null, "null");
+    map.set(undefined, "undefined");
+    map.set(fn, "function");
+
+    expect(map.get(1)).toBe("number");
+    expect(map.get("key")).toBe("string");
+    expect(map.get(null)).toBe("null");
+    expect(map.get(undefined)).toBe("undefined");
+    expect(map.get(fn)).toBe("function");
+    expect(map.get(() => {})).toBe(undefined);
+  });
+
+  it(".Map: Throws for circular keys", () => {
+    const map = new RecordTuple.Map();
+    const circular: any = {};
+    circular.self = circular;
+
+    expect(() => map.set(circular, "value")).toThrow(
+      RecordTuple.CircularReferenceError
+    );
+  });
+
+  it(".Map: Narrows value type by key", () => {
+    const map = new RecordTuple.Map<
+      [{ type: "a" }, number] | [{ type: "b" }, string]
+    >([
+      [{ type: "a" }, 1],
+      [{ type: "b" }, "two"],
+    ]);
+
+    const a = map.get({ type: "a" });
+    const b = map.get({ type: "b" });
+
+    expectTypeOf(a).toEqualTypeOf<number | undefined>();
+    expectTypeOf(b).toEqualTypeOf<string | undefined>();
+    expect(a).toBe(1);
+    expect(b).toBe("two");
+
+    expectTypeOf(map.get(Record({ type: "a" }))).toEqualTypeOf<
+      number | undefined
+    >();
+    expect(map.get(Record({ type: "a" }))).toBe(1);
+
+    const wide = map.get({ type: "a" } as { type: "a" } | { type: "b" });
+    expectTypeOf(wide).toEqualTypeOf<number | string | undefined>();
+
+    map.set({ type: "a" }, 2);
+    expect(map.get({ type: "a" })).toBe(2);
+
+    // @ts-expect-error Wrong value type for key
+    map.set({ type: "a" }, "one");
+    // @ts-expect-error Key is not in the entry union
+    map.get({ type: "c" });
+  });
+
+  it(".Map: Narrows entries on iteration", () => {
+    const map = new RecordTuple.Map<["a", number] | ["b", string]>([
+      ["a", 1],
+      ["b", "two"],
+    ]);
+
+    for (const [key, value] of map) {
+      if (key === "a") expectTypeOf(value).toEqualTypeOf<number>();
+      if (key === "b") expectTypeOf(value).toEqualTypeOf<string>();
+    }
+
+    expect([...map.entries()]).toEqual([
+      ["a", 1],
+      ["b", "two"],
+    ]);
+  });
+
+  it(".Map: Uniform value type with a single entry pair", () => {
+    const map = new RecordTuple.Map<[{ kind: string; id: number }, string]>([
+      [{ kind: "user", id: 1 }, "Ada"],
+    ]);
+
+    expect(map.get({ kind: "user", id: 1 })).toBe("Ada");
+    expectTypeOf(map.get({ kind: "user", id: 1 })).toEqualTypeOf<
+      string | undefined
+    >();
+
+    map.set({ kind: "user", id: 2 }, "Grace");
+    expect(map.get({ kind: "user", id: 2 })).toBe("Grace");
+    expect(map.has({ kind: "post", id: 1 })).toBe(false);
+
+    // @ts-expect-error Value must be a string
+    map.set({ kind: "user", id: 3 }, 3);
+    // @ts-expect-error Key must have kind and id
+    map.get({ kind: "user" });
+  });
+
+  it(".Map: Rejects a non-entries type argument", () => {
+    // @ts-expect-error The type argument must be a union of entry pairs
+    new RecordTuple.Map<{ a: number }>();
+    // @ts-expect-error Every member of the union must be an entry pair
+    new RecordTuple.Map<[{ a: number }, string] | { b: number }>();
+  });
+
+  it(".Map: Works in generic code", () => {
+    function wrap<K, V>() {
+      return new RecordTuple.Map<[K, V]>();
+    }
+
+    const map = wrap<{ a: number }, string>();
+    map.set({ a: 1 }, "x");
+    expect(map.get({ a: 1 })).toBe("x");
+    expectTypeOf(map.get({ a: 1 })).toEqualTypeOf<string | undefined>();
+  });
+
+  it(".Map: Tuple keys", () => {
+    const map = new RecordTuple.Map<[[number, number], string]>([
+      [[1, 2], "point"],
+    ]);
+
+    expect(map.get([1, 2])).toBe("point");
+    expectTypeOf(map.get([1, 2])).toEqualTypeOf<string | undefined>();
+  });
+
+  it(".Map: Infers literal entries from constructor", () => {
+    const map = new RecordTuple.Map([
+      [{ type: "a" }, 1],
+      [{ type: "b" }, "two"],
+    ]);
+
+    expectTypeOf(map.get({ type: "a" })).toEqualTypeOf<1 | undefined>();
+    expectTypeOf(map.get({ type: "b" })).toEqualTypeOf<"two" | undefined>();
+    expect(map.get({ type: "a" })).toBe(1);
+    expect(map.get({ type: "b" })).toBe("two");
   });
 });

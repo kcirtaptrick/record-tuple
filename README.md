@@ -68,3 +68,53 @@ RecordTuple.deep([
   { c: "c", d: "d" },
 ]) === Tuple(Record({ a: "a", b: "b" }), Record({ c: "c", d: "d" }));
 ```
+
+### RecordTuple.Map
+
+A `Map` with structural keys: any structurally equal key finds the same entry.
+Keys are interned with `RecordTuple.deep`; non-object keys behave like they do
+in a native `Map`.
+
+```ts
+import { RecordTuple, Record } from "record-tuple";
+
+const map = new RecordTuple.Map();
+
+map.set({ a: 1 }, "value");
+
+map.get({ a: 1 }); // "value"
+map.get(Record({ a: 1 })); // "value"
+```
+
+The type argument is a union of `[Key, Value]` entry pairs — one pair types a
+uniform map:
+
+```ts
+const scores = new RecordTuple.Map<[{ id: number }, number]>();
+
+scores.set({ id: 1 }, 100);
+scores.get({ id: 1 }); // number | undefined
+```
+
+With multiple pairs, `get` narrows the value type by key:
+
+```ts
+const map = new RecordTuple.Map<
+  [{ type: "a" }, number] | [{ type: "b" }, string]
+>();
+
+map.get({ type: "a" }); // number | undefined
+map.get({ type: "b" }); // string | undefined
+```
+
+Constructor entries are inferred with literal types, so lookup tables narrow
+without annotations:
+
+```ts
+const statuses = new RecordTuple.Map([
+  [{ code: 200 }, "ok"],
+  [{ code: 404 }, "not found"],
+]);
+
+statuses.get({ code: 200 }); // "ok" | undefined
+```
