@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Record from "../Record";
+import Canonical from "../Canonical";
 import Tuple from "../Tuple";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
@@ -79,9 +80,9 @@ describe("Record", () => {
     expect(Record.isRecord([])).toBeFalsy();
   });
 
-  it("Has Symbol.isRecord property", () => {
+  it("Has Canonical.kind property", () => {
     const record = Record({ a: "a" });
-    expect(record[Symbol.isRecord]).toBe(true);
+    expect(record[Canonical.kind]).toBe("record");
   });
 
   it("Provides nested structural equality", () => {

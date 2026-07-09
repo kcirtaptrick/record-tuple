@@ -1,30 +1,15 @@
-import Tuple, { supportsWeak } from "./Tuple.js";
-
-declare global {
-  interface SymbolConstructor {
-    readonly isRecord: unique symbol;
-  }
-}
-
-// @ts-expect-error Symbol.isRecord is usually not assignable
-if (!Symbol.isRecord) Symbol.isRecord = Symbol("isRecord");
+import Tuple from "./Tuple.js";
+import Canonical from "./Canonical.js";
 
 export type Recordable = {
   readonly [key: keyof any]: any;
 };
 
-const tuplesByRecord = supportsWeak
-  ? new WeakMap<Record.Type, Tuple.Type>()
-  : (new Map() as never);
-const recordsByTuple = supportsWeak
-  ? new WeakMap<Tuple.Type, Record.Type>()
-  : (new Map() as never);
-
 const symbolKeyError = "A Symbol cannot be used as a property key in a Record.";
 
 declare namespace Record {
   type Type<T extends Recordable = Recordable> = T & {
-    readonly [Symbol.isRecord]: true;
+    readonly [Canonical.kind]: "record";
   };
 }
 
@@ -39,19 +24,23 @@ function Record<T extends Recordable>(obj: T): Record.Type<T> {
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
 
-type TupleEntries<T> = Tuple.Type<
-  {
-    [Key in Exclude<KeysOfUnion<T>, typeof Symbol.isRecord>]: Tuple.Type<
-      [Key, Extract<T, { [k in Key]?: any }>[Key]]
-    >;
-  }[Exclude<KeysOfUnion<T>, typeof Symbol.isRecord>][]
->;
+type EntriesOf<T> = {
+  [Key in Exclude<KeysOfUnion<T>, typeof Canonical.kind>]: Tuple.Type<
+    [Key, Extract<T, { [k in Key]?: any }>[Key]]
+  >;
+}[Exclude<KeysOfUnion<T>, typeof Canonical.kind>][];
 
-Record.entries = <R extends Record.Type>(record: R): TupleEntries<R> => {
-  const tuple = tuplesByRecord.get(record);
-  if (!tuple)
+Record.entries = <R extends Record.Type>(
+  record: R
+): Tuple.Type<EntriesOf<R>> => {
+  if (!Record.isRecord(record))
     throw new TypeError("Record.entries unexpectedly received a non-record.");
-  return tuple as any;
+
+  return Tuple.from(
+    Object.entries(record)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map((entry) => Tuple.from(entry))
+  ) as any;
 };
 
 type FromEntries<Entries extends readonly [string, any][]> = {
@@ -61,39 +50,30 @@ type FromEntries<Entries extends readonly [string, any][]> = {
 Record.fromEntries = <Entries extends readonly [string, any][]>(
   entries: Entries
 ): Record.Type<FromEntries<Entries>> => {
-  // @ts-expect-error `entries` is not necessarily a tuple
-  if (recordsByTuple.has(entries)) return recordsByTuple.get(entries);
+  for (const entry of entries)
+    if (typeof entry[0] === "symbol") throw new TypeError(symbolKeyError);
 
-  const tuple = Tuple.from(
-    [...entries]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map((entry) => {
-        if (typeof entry[0] === "symbol") throw new TypeError(symbolKeyError);
-        return Tuple.from(entry);
-      })
+  const sorted = [...entries].sort(([a], [b]) => a.localeCompare(b));
+  const deduped = sorted.filter(
+    (entry, index) =>
+      index === sorted.length - 1 || sorted[index + 1]![0] !== entry[0]
   );
 
-  if (!recordsByTuple.has(tuple)) {
-    let record = (() => {
-      const res = Object.fromEntries(tuple);
+  const key = `rec:${deduped
+    .map(
+      ([k, v]) =>
+        `${Canonical.Hash.Segment.text(k)}=${Canonical.Hash.encode(v)}`
+    )
+    .join(",")}`;
 
-      Object.defineProperty(res, Symbol.isRecord, {
-        value: true as const,
-      });
-
-      return Object.freeze(res) as typeof res & {
-        readonly [Symbol.isRecord]: true;
-      };
-    })();
-
-    recordsByTuple.set(tuple, record);
-    tuplesByRecord.set(record, tuple);
-  }
-
-  return recordsByTuple.get(tuple) as any;
+  return Canonical.Cache.ensure(
+    "record",
+    Canonical.Hash.seal<Record.Type<FromEntries<Entries>>>(key),
+    () => Object.fromEntries(deduped) as FromEntries<Entries>
+  );
 };
 
 Record.isRecord = (maybeRecord: any): maybeRecord is Record.Type =>
-  tuplesByRecord.has(maybeRecord);
+  Canonical.kindOf(maybeRecord) === "record";
 
 export default Record;

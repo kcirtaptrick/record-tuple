@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import Record from "../Record";
 import Tuple from "../Tuple";
+import Canonical from "../Canonical";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 
@@ -47,9 +48,9 @@ describe("Tuple", () => {
     expect(Tuple.isTuple({})).toBeFalsy();
   });
 
-  it("Has Symbol.isTuple property", () => {
+  it("Has Canonical.kind property", () => {
     const tuple = Tuple(1, 2, 3);
-    expect(tuple[Symbol.isTuple]).toBe(true);
+    expect(tuple[Canonical.kind]).toBe("tuple");
   });
 
   it("Provides nested structural equality", () => {
@@ -113,5 +114,21 @@ describe("Tuple", () => {
     dispose();
 
     expect(ref.deref() == null).toBeTruthy();
+  });
+
+  it("Finalizer keeps a key re-interned before collection", async () => {
+    const sym = Symbol(); // test-owned key component
+    const dispose = (() => {
+      const first = Tuple(sym, 1);
+      return FinalizationRegistry.disposerFor(first);
+    })();
+
+    await new Promise((resolve) => setTimeout(resolve));
+    gc(); // first is collected; its registration is now stale
+
+    const second = Tuple(sym, 1); // re-interns the same key
+    dispose(); // the stale finalizer fires
+
+    expect(Tuple(sym, 1)).toBe(second);
   });
 });
