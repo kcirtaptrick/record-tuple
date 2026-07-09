@@ -163,6 +163,42 @@ describe("RecordTuple", () => {
     }
   });
 
+  it(".deep: Shared references are not circular", () => {
+    // A DAG — the same value reachable along several paths — interns fine;
+    // only an ancestor reappearing below itself is a cycle.
+    {
+      const shared = { a: "a" };
+      expect(RecordTuple.deep({ x: shared, y: shared })).toBe(
+        RecordTuple.deep({ x: { a: "a" }, y: { a: "a" } })
+      );
+    }
+    {
+      const leaf = [1, 2];
+      expect(RecordTuple.deep([leaf, [leaf], { leaf }])).toBe(
+        RecordTuple.deep([
+          [1, 2],
+          [[1, 2]],
+          { leaf: [1, 2] },
+        ])
+      );
+    }
+    {
+      // a chain of shared nodes stays linear (cached), not exponential
+      let node: any = { n: 0 };
+      for (let i = 1; i <= 40; i++) node = { n: i, left: node, right: node };
+      expect(RecordTuple.deep(node)).toBe(RecordTuple.deep(node));
+    }
+  });
+
+  it(".deep: Sibling-shared values still detect true cycles", () => {
+    const circular: any = { self: null };
+    circular.self = circular;
+
+    expect(() => RecordTuple.deep({ a: circular, b: circular })).toThrow(
+      RecordTuple.CircularReferenceError
+    );
+  });
+
   it(".Map: Looks up structurally equal keys", () => {
     const map = new RecordTuple.Map();
 

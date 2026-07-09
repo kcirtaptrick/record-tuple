@@ -43,27 +43,44 @@ namespace RecordTuple {
         `Expected input to be an object or array, got \`${input}\``
       );
 
-    const refs = new Set();
+    // Cycle detection tracks the current PATH only — a value reachable
+    // twice along different paths (a DAG: shared subtrees, repeated leaf
+    // references) is fine and interns to the same result; only an ancestor
+    // reappearing below itself is circular.
+    const path = new Set();
+    // Non-circular duplicate reference cache — keeps a chain of shared
+    // subtrees linear instead of exponential. globalThis: bare `Map` here
+    // is RecordTuple.Map, whose key interning calls straight back into
+    // deep().
+    const refCache = new globalThis.Map();
 
     return (function next(value = input): any {
-      if (refs.has(value)) throw new RecordTuple.CircularReferenceError();
-      refs.add(value);
+      if (path.has(value)) throw new RecordTuple.CircularReferenceError();
 
       if (Tuple.isTuple(value) || Record.isRecord(value)) return value;
 
-      if (Array.isArray(value))
-        return Tuple.from(
-          value.map(
-            (item) => item && (typeof item === "object" ? next(item) : item)
-          )
-        );
+      const cached = refCache.get(value);
+      if (cached) return cached;
 
-      return Record.fromEntries(
-        Object.entries(value).map(([k, v]) => [
-          k,
-          v && (typeof v === "object" ? next(v) : v),
-        ])
-      );
+      path.add(value);
+
+      const result = Array.isArray(value)
+        ? Tuple.from(
+            value.map(
+              (item) => item && (typeof item === "object" ? next(item) : item)
+            )
+          )
+        : Record.fromEntries(
+            Object.entries(value).map(([k, v]) => [
+              k,
+              v && (typeof v === "object" ? next(v) : v),
+            ])
+          );
+
+      path.delete(value);
+      refCache.set(value, result);
+
+      return result;
     })();
   }
 
