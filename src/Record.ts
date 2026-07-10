@@ -69,7 +69,10 @@ Record.fromEntries = <Entries extends readonly [string, any][]>(
   return Canonical.Cache.ensure(
     "record",
     Canonical.Hash.seal<Record.Type<FromEntries<Entries>>>(key),
-    () => Object.fromEntries(deduped) as FromEntries<Entries>
+    () =>
+      Object.fromEntries(
+        deduped.map(([k, v]) => [k, Canonical.resolve(v) ?? v])
+      ) as FromEntries<Entries>
   );
 };
 

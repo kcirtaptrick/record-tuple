@@ -6,6 +6,81 @@ namespace Canonical {
    */
   export const supportsWeak = typeof WeakRef !== "undefined";
 
+  export namespace Kind {
+    export interface Registration<
+      T extends object = object,
+      Copy extends object = T
+    > {
+      is(value: unknown): value is T;
+      /**
+       * The kind-specific identity of a value. A key should correspond to
+       * exactly one shape. Runs on both raw values and canonical copies, so it
+       * should read only what the two share.
+       */
+      key(value: T | Copy): string;
+      /**
+       * Return a copy of the value to prevent caching monkey patches and
+       * prevent input mutation. It is tagged with its kind and frozen, must be
+       * extensible.
+       */
+      canonicalize(value: T): Copy;
+    }
+
+    export namespace Registration {
+      export const find = (
+        value: object
+      ): readonly [string, Kind.Registration] | undefined => {
+        const tag = (value as { [kind]?: unknown })[kind];
+        if (typeof tag === "string" && builtIn.includes(tag)) return;
+        for (const kind of kinds) if (kind[1].is(value)) return kind;
+      };
+    }
+  }
+
+  const kinds = new Map<string, Kind.Registration>();
+
+  const tagOf = (value: unknown) =>
+    (value as { [Symbol.toStringTag]?: unknown })?.[Symbol.toStringTag];
+
+  const builtIn = ["tuple", "record"];
+
+  export function register<T extends object, Copy extends object = T>(
+    kind: string | (abstract new (...args: never[]) => T),
+    canonicalize: (value: T) => Copy,
+    registration: {
+      // Strings represent string tags
+      is?: string | readonly string[] | Kind.Registration<T>["is"];
+      key(value: T | Copy): string;
+    }
+  ): void {
+    const name = typeof kind === "string" ? kind : tagOf(kind.prototype);
+
+    if (typeof name !== "string")
+      throw new TypeError(
+        "Cannot derive a kind name: the constructor's prototype has no string Symbol.toStringTag. Define one or pass the kind name explicitly."
+      );
+
+    if (builtIn.includes(name))
+      throw new TypeError(
+        `"${name}" is a built-in canonical kind and cannot be re-registered.`
+      );
+
+    if (kinds.has(name))
+      throw new TypeError(`Canonical kind "${name}" is already registered.`);
+
+    const is = registration.is ?? name;
+
+    const tags = [is].flat();
+    kinds.set(name, {
+      ...registration,
+      canonicalize,
+      is:
+        typeof is === "function"
+          ? is
+          : (value): value is T => tags.includes(tagOf(value) as string),
+    });
+  }
+
   namespace Ref {
     let nextId = 0;
 
@@ -57,7 +132,11 @@ namespace Canonical {
           assert(typeof value === "object" || typeof value === "function");
           if (value === null) return "nul";
 
-          return `ref:${Ref.id(value).toString(36)}`;
+          const found = Kind.Registration.find(value);
+          if (!found) return `ref:${Ref.id(value).toString(36)}`;
+
+          const [name, registration] = found;
+          return Segment.kind(name, registration.key(value));
         }
       }
     };
@@ -74,6 +153,12 @@ namespace Canonical {
           key ? `sym:${text(key)}` : `ref:${Ref.id(value).toString(36)}`
         );
       };
+
+      export const kind = (
+        name: string,
+        key: string
+      ): Hash<object & { readonly [Canonical.kind]: string }> =>
+        seal(`knd:${text(name)}${text(key)}`);
     }
   }
 
@@ -81,6 +166,22 @@ namespace Canonical {
     typeof value === "object" && value !== null && Cache.has(value)
       ? (value as { readonly [kind]: string })[kind]
       : undefined;
+
+  export const resolve = (value: unknown): object | undefined => {
+    if (!value || (typeof value !== "object" && typeof value !== "function"))
+      return;
+
+    if (Cache.has(value)) return value;
+
+    const found = Kind.Registration.find(value);
+    if (!found) return;
+
+    const [name, of] = found;
+
+    return Cache.ensure(name, Hash.Segment.kind(name, of.key(value)), () =>
+      of.canonicalize(value)
+    );
+  };
 
   export namespace Cache {
     const cache = new Map<string, WeakRef<object>>();

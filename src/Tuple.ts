@@ -22,7 +22,7 @@ Tuple.from = <const T extends Tupleable>(items: T): Tuple.Type<T> => {
   return Canonical.Cache.ensure(
     "tuple",
     Canonical.Hash.seal<Tuple.Type<T>>(key),
-    () => [...items] as T
+    () => items.map((item) => Canonical.resolve(item) ?? item) as unknown as T
   );
 };
 

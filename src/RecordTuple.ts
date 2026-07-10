@@ -1,3 +1,4 @@
+import Canonical from "./Canonical.js";
 import Record, { Recordable } from "./Record.js";
 import Tuple, { Tupleable } from "./Tuple.js";
 
@@ -57,9 +58,9 @@ namespace RecordTuple {
     return (function next(value = input): any {
       if (path.has(value)) throw new RecordTuple.CircularReferenceError();
 
-      if (Tuple.isTuple(value) || Record.isRecord(value)) return value;
-
-      const cached = refCache.get(value);
+      // Canonical values (tuples, records, registered kinds) resolve to
+      // themselves; raw registered-kind values to their canonical.
+      const cached = refCache.get(value) || Canonical.resolve(value);
       if (cached) return cached;
 
       path.add(value);
