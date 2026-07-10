@@ -139,9 +139,7 @@ describe("RecordTuple", () => {
     const error = new RecordTuple.CircularReferenceError();
     expect(error).toBeInstanceOf(TypeError);
     expect(error.name).toBe("CircularReferenceError");
-    expect(error.message).toBe(
-      "Unexpected circular reference encountered."
-    );
+    expect(error.message).toBe("Unexpected circular reference encountered.");
   });
 
   it(".deep: Circular reference", () => {
@@ -164,8 +162,6 @@ describe("RecordTuple", () => {
   });
 
   it(".deep: Shared references are not circular", () => {
-    // A DAG — the same value reachable along several paths — interns fine;
-    // only an ancestor reappearing below itself is a cycle.
     {
       const shared = { a: "a" };
       expect(RecordTuple.deep({ x: shared, y: shared })).toBe(
@@ -175,15 +171,10 @@ describe("RecordTuple", () => {
     {
       const leaf = [1, 2];
       expect(RecordTuple.deep([leaf, [leaf], { leaf }])).toBe(
-        RecordTuple.deep([
-          [1, 2],
-          [[1, 2]],
-          { leaf: [1, 2] },
-        ])
+        RecordTuple.deep([[1, 2], [[1, 2]], { leaf: [1, 2] }])
       );
     }
     {
-      // a chain of shared nodes stays linear (cached), not exponential
       let node: any = { n: 0 };
       for (let i = 1; i <= 40; i++) node = { n: i, left: node, right: node };
       expect(RecordTuple.deep(node)).toBe(RecordTuple.deep(node));
@@ -386,5 +377,58 @@ describe("RecordTuple", () => {
     expectTypeOf(map.get({ type: "b" })).toEqualTypeOf<"two" | undefined>();
     expect(map.get({ type: "a" })).toBe(1);
     expect(map.get({ type: "b" })).toBe("two");
+  });
+
+  it(".Set: Dedupes structurally equal values", () => {
+    const set = new RecordTuple.Set();
+
+    set.add({ a: 1 });
+    set.add(Record({ a: 1 }));
+    set.add([1, 2, 3]);
+    set.add(Tuple(1, 2, 3));
+    set.add({ a: [1, { b: 2 }] });
+    set.add({ a: [1, { b: 2 }] });
+
+    expect(set.size).toBe(3);
+    expect(set.has({ a: 1 })).toBe(true);
+    expect(set.has([1, 2, 3])).toBe(true);
+    expect(set.has({ a: [1, { b: 2 }] })).toBe(true);
+    expect(set.has({ a: 2 })).toBe(false);
+  });
+
+  it(".Set: Interns values on construction", () => {
+    const set = new RecordTuple.Set([{ a: 1 }, [1, 2]]);
+
+    expect([...set]).toEqual([Record({ a: 1 }), Tuple(1, 2)]);
+    expect([...set][0]).toBe(Record({ a: 1 }));
+    expect([...set][1]).toBe(Tuple(1, 2));
+  });
+
+  it(".Set: Deletes by structural value", () => {
+    const set = new RecordTuple.Set<{ a: number }>([{ a: 1 }]);
+
+    expect(set.delete({ a: 2 })).toBe(false);
+    expect(set.delete({ a: 1 })).toBe(true);
+    expect(set.size).toBe(0);
+  });
+
+  it(".Set: Holds non-objects by identity", () => {
+    const fn = () => {};
+    const set = new RecordTuple.Set([1, "value", null, undefined, fn] as const);
+
+    expect(set.has(1)).toBe(true);
+    expect(set.has("value")).toBe(true);
+    expect(set.has(null)).toBe(true);
+    expect(set.has(undefined)).toBe(true);
+    expect(set.has(fn)).toBe(true);
+    expect(set.size).toBe(5);
+  });
+
+  it(".Set: Throws for circular values", () => {
+    const set = new RecordTuple.Set();
+    const circular: any = {};
+    circular.self = circular;
+
+    expect(() => set.add(circular)).toThrow(RecordTuple.CircularReferenceError);
   });
 });

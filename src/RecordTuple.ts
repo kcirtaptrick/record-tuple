@@ -44,24 +44,15 @@ namespace RecordTuple {
         `Expected input to be an object or array, got \`${input}\``
       );
 
-    // Cycle detection tracks the current PATH only — a value reachable
-    // twice along different paths (a DAG: shared subtrees, repeated leaf
-    // references) is fine and interns to the same result; only an ancestor
-    // reappearing below itself is circular.
-    const path = new Set();
-    // Non-circular duplicate reference cache — keeps a chain of shared
-    // subtrees linear instead of exponential. globalThis: bare `Map` here
-    // is RecordTuple.Map, whose key interning calls straight back into
-    // deep().
+    const path = new globalThis.Set();
+    // Non-circular duplicate reference cache
     const refCache = new globalThis.Map();
 
     return (function next(value = input): any {
       if (path.has(value)) throw new RecordTuple.CircularReferenceError();
 
-      // Canonical values (tuples, records, registered kinds) resolve to
-      // themselves; raw registered-kind values to their canonical.
-      const cached = refCache.get(value) || Canonical.resolve(value);
-      if (cached) return cached;
+      const resolved = refCache.get(value) || Canonical.resolve(value);
+      if (resolved) return resolved;
 
       path.add(value);
 
@@ -145,6 +136,29 @@ namespace RecordTuple {
     export type Pair<E extends Entry> = E extends unknown
       ? [E[0], E[1]]
       : never;
+  }
+
+  export class Set<const T = unknown> extends globalThis.Set<T> {
+    constructor(values?: Iterable<T> | null) {
+      super();
+      if (values) for (const value of values) this.add(value);
+    }
+
+    private resolveValue(value: unknown): any {
+      return value && typeof value === "object" ? deep(value as Input) : value;
+    }
+
+    add(value: T): this {
+      return super.add(this.resolveValue(value));
+    }
+
+    has(value: T): boolean {
+      return super.has(this.resolveValue(value));
+    }
+
+    delete(value: T): boolean {
+      return super.delete(this.resolveValue(value));
+    }
   }
 }
 
