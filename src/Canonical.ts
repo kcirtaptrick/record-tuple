@@ -6,6 +6,52 @@ namespace Canonical {
    */
   export const supportsWeak = typeof WeakRef !== "undefined";
 
+  // Error on incompatible state protocols
+  const protocol = 1;
+
+  type State = {
+    protocol: number;
+    nextId: number;
+    refIds: WeakMap<WeakKey, number>;
+    // Fallback for engines that reject symbols as weak keys
+    symbolIds: Map<symbol, number> | undefined;
+    kinds: Map<string, Kind.Registration>;
+    cache: Map<string, WeakRef<object>>;
+    minted: WeakSet<object> | Set<object>;
+  };
+
+  // Shared state for cross-version compaibility
+  const state: State = (() => {
+    const globals = globalThis as { [key: symbol]: State | undefined };
+    const slot = Symbol.for("record-tuple.state");
+
+    const existing = globals[slot];
+    if (existing) {
+      if (existing.protocol !== protocol)
+        throw new TypeError(
+          `record-tuple protocol mismatch: expected ${protocol}, found ${existing.protocol}. Ensure all record-tuple copies in this process are compatible versions.`
+        );
+      return existing;
+    }
+
+    return (globals[slot] = {
+      protocol,
+      nextId: 0,
+      refIds: new WeakMap(),
+      symbolIds: (() => {
+        try {
+          new WeakMap().set(Symbol(), 0);
+          return undefined;
+        } catch {
+          return new Map<symbol, number>();
+        }
+      })(),
+      kinds: new Map(),
+      cache: new Map(),
+      minted: supportsWeak ? new WeakSet<object>() : new Set<object>(),
+    });
+  })();
+
   export namespace Kind {
     export interface Registration<
       T extends object = object,
@@ -32,12 +78,10 @@ namespace Canonical {
       ): readonly [string, Kind.Registration] | undefined => {
         const tag = (value as { [kind]?: unknown })[kind];
         if (typeof tag === "string" && builtIn.includes(tag)) return;
-        for (const kind of kinds) if (kind[1].is(value)) return kind;
+        for (const kind of state.kinds) if (kind[1].is(value)) return kind;
       };
     }
   }
-
-  const kinds = new Map<string, Kind.Registration>();
 
   const tagOf = (value: unknown) =>
     (value as { [Symbol.toStringTag]?: unknown })?.[Symbol.toStringTag];
@@ -65,13 +109,12 @@ namespace Canonical {
         `"${name}" is a built-in canonical kind and cannot be re-registered.`
       );
 
-    if (kinds.has(name))
-      throw new TypeError(`Canonical kind "${name}" is already registered.`);
+    if (state.kinds.has(name)) return;
 
     const is = registration.is ?? name;
 
     const tags = [is].flat();
-    kinds.set(name, {
+    state.kinds.set(name, {
       ...registration,
       canonicalize,
       is:
@@ -82,26 +125,14 @@ namespace Canonical {
   }
 
   namespace Ref {
-    let nextId = 0;
-
-    // Some engines don't support symbols as weak keys, so we need to use a strong map for them.
-    const strongSymbolIds = (() => {
-      try {
-        new WeakMap().set(Symbol(), 0);
-      } catch {
-        return new Map<symbol, number>();
-      }
-    })();
-
-    const weakIds = new WeakMap<WeakKey, number>();
-
     export function id(value: WeakKey): number {
-      const ids = (typeof value === "symbol" && strongSymbolIds) || weakIds;
+      const ids =
+        (typeof value === "symbol" && state.symbolIds) || state.refIds;
 
       const existing = ids.get(value);
       if (existing !== undefined) return existing;
 
-      const id = ++nextId;
+      const id = ++state.nextId;
       ids.set(value, id);
       return id;
     }
@@ -184,17 +215,12 @@ namespace Canonical {
   };
 
   export namespace Cache {
-    const cache = new Map<string, WeakRef<object>>();
-
-    const minted = supportsWeak ? new WeakSet<object>() : new Set<object>();
-
-    /** Whether the value is a canonical instance (of any kind). */
-    export const has = (value: object): boolean => minted.has(value);
+    export const has = (value: object): boolean => state.minted.has(value);
 
     const finalizer = supportsWeak
       ? new FinalizationRegistry<string>((key) => {
-          const ref = cache.get(key);
-          if (ref && !ref.deref()) cache.delete(key);
+          const ref = state.cache.get(key);
+          if (ref && !ref.deref()) state.cache.delete(key);
         })
       : undefined;
 
@@ -203,7 +229,7 @@ namespace Canonical {
       key: Hash<T & { readonly [Canonical.kind]: K }>,
       create: () => T
     ): T & { readonly [Canonical.kind]: K } => {
-      const existing = cache.get(key);
+      const existing = state.cache.get(key);
       if (existing) {
         const value = existing.deref();
         if (value) return value as never;
@@ -218,8 +244,8 @@ namespace Canonical {
       Object.defineProperty(ref, Canonical.kind, { value: kind });
 
       const value = Object.freeze(ref) as T & { readonly [Canonical.kind]: K };
-      minted.add(value);
-      cache.set(
+      state.minted.add(value);
+      state.cache.set(
         key,
         supportsWeak ? new WeakRef(value) : ({ deref: () => value } as never)
       );

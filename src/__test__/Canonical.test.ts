@@ -82,14 +82,20 @@ describe("Canonical", () => {
     );
   });
 
-  it("refuses duplicate and built-in kind names", () => {
+  it("re-registration is first-wins; built-in names are refused", () => {
     const conflicting = {
       is: (v: unknown): v is Box => v instanceof Box,
       key: () => "conflict",
     };
+    // The registry is process-wide and shared across copies of the
+    // library, so a second registration of the same name (a second copy
+    // loading) is a no-op and the original keeps governing.
     expect(() =>
       Canonical.register("test.box", (v: Box) => v, conflicting)
-    ).toThrow(/already registered/);
+    ).not.toThrow();
+    expect(RecordTuple.deep({ b: new Box(5) }).b).toBe(
+      RecordTuple.deep({ b: new Box(5) }).b
+    );
     for (const name of ["tuple", "record"])
       expect(() =>
         Canonical.register(name, (v: Box) => v, conflicting)
@@ -150,6 +156,25 @@ describe("Canonical", () => {
   it("built-ins carry their kind through the same tag", () => {
     expect(Tuple(1)[Canonical.kind]).toBe("tuple");
     expect(Record({ a: 1 })[Canonical.kind]).toBe("record");
+  });
+
+  it("hash encoding is a stable cross-copy protocol", () => {
+    // Copies of the library share one cache (the globalThis state slot),
+    // which makes this encoding a shared format: changing any of it
+    // requires bumping the protocol constant in Canonical.ts, and a
+    // mismatched copy then fails at load.
+    const encode = Canonical.Hash.encode;
+    expect(encode(undefined)).toBe("und");
+    expect(encode(null)).toBe("nul");
+    expect(encode(true)).toBe("tru");
+    expect(encode(false)).toBe("fal");
+    expect(encode(42)).toBe("num:42");
+    expect(encode(-0)).toBe("num:0");
+    expect(encode(BigInt(7))).toBe("bgi:7");
+    expect(encode("a,b")).toBe("str:3:a,b");
+    expect(encode(Symbol.for("k"))).toBe("sym:1:k");
+    expect(encode({})).toMatch(/^ref:[0-9a-z]+$/);
+    expect(Canonical.Hash.Segment.kind("name", "key")).toBe("knd:4:name3:key");
   });
 
   it("resolve: canonical values (any kind) resolve to themselves", () => {
