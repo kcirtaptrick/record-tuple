@@ -37,7 +37,8 @@ namespace RecordTuple {
   }
 
   export function deep<T extends RecordTuple.Input>(
-    input: T
+    input: T,
+    { foreign = "throw" as "keep" | "traverse" | "throw" } = {}
   ): RecordTuple.deep.Result<T> {
     if (!input || typeof input !== "object")
       throw new TypeError(
@@ -53,6 +54,18 @@ namespace RecordTuple {
 
       const resolved = refCache.get(value) || Canonical.resolve(value);
       if (resolved) return resolved;
+
+      if (!Array.isArray(value) && !isPlainObject(value)) {
+        if (foreign === "keep") return value;
+        if (foreign === "throw")
+          throw new TypeError(
+            `deep() traverses only arrays and plain objects by default; received ${
+              value.constructor?.name
+                ? `an instance of ${value.constructor.name}`
+                : Object.prototype.toString.call(value)
+            }. Register the type as a canonical kind (Canonical.register) to intern it by value, or set deep's foreign option to "keep" (by reference) or "traverse" (own enumerable entries).`
+          );
+      }
 
       path.add(value);
 
@@ -163,3 +176,8 @@ namespace RecordTuple {
 }
 
 export default RecordTuple;
+
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}

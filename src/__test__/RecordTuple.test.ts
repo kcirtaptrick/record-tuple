@@ -115,6 +115,48 @@ describe("RecordTuple", () => {
     );
   });
 
+  it(".deep: Traverses only arrays and plain objects", () => {
+    // Slot-based state is invisible to Object.entries; traversing would
+    // silently intern every Date as Record({}).
+    expect(() => RecordTuple.deep({ at: new Date() })).toThrow(
+      /instance of Date.*Canonical\.register/
+    );
+    class Point {
+      constructor(readonly x: number) {}
+    }
+    expect(() => RecordTuple.deep([new Point(1)])).toThrow(
+      /instance of Point/
+    );
+    // null-prototype objects are plain
+    const bare = Object.assign(Object.create(null), { a: 1 });
+    expect(RecordTuple.deep({ bare })).toBe(
+      RecordTuple.deep({ bare: { a: 1 } })
+    );
+  });
+
+  it('.deep: foreign "keep" keeps unregistered instances by reference', () => {
+    const date = new Date(0);
+
+    const kept = RecordTuple.deep({ at: date }, { foreign: "keep" });
+    expect(kept.at).toBe(date);
+    expect(RecordTuple.deep({ at: date }, { foreign: "keep" })).toBe(kept);
+
+    // an equal-valued but distinct instance is a distinct reference
+    expect(RecordTuple.deep({ at: new Date(0) }, { foreign: "keep" })).not.toBe(
+      kept
+    );
+  });
+
+  it('.deep: foreign "traverse" interns own enumerable entries', () => {
+    class Point {
+      constructor(readonly x: number, readonly y: number) {}
+    }
+
+    expect(RecordTuple.deep([new Point(1, 2)], { foreign: "traverse" })).toBe(
+      RecordTuple.deep([{ x: 1, y: 2 }])
+    );
+  });
+
   it(".deep: Throws TypeError for non-object input", () => {
     // @ts-expect-error
     expect(() => RecordTuple.deep(null)).toThrow(TypeError);
