@@ -236,20 +236,27 @@ namespace Canonical {
       }
 
       const ref = create();
-      if (!Object.isExtensible(ref))
-        throw new TypeError(
-          `Received a non-extensible object for kind "${kind}".`
+
+      // Create can return instances from automatically-canonicalizing constructors
+      if (!has(ref)) {
+        if (!Object.isExtensible(ref))
+          throw new TypeError(
+            `Received a non-extensible object for kind "${kind}".`
+          );
+
+        Object.defineProperty(ref, Canonical.kind, { value: kind });
+        state.minted.add(Object.freeze(ref));
+      }
+
+      const value = ref as T & { readonly [Canonical.kind]: K };
+
+      if (state.cache.get(key)?.deref() !== value) {
+        state.cache.set(
+          key,
+          supportsWeak ? new WeakRef(value) : ({ deref: () => value } as never)
         );
-
-      Object.defineProperty(ref, Canonical.kind, { value: kind });
-
-      const value = Object.freeze(ref) as T & { readonly [Canonical.kind]: K };
-      state.minted.add(value);
-      state.cache.set(
-        key,
-        supportsWeak ? new WeakRef(value) : ({ deref: () => value } as never)
-      );
-      finalizer?.register(value, key);
+        finalizer?.register(value, key);
+      }
 
       return value;
     };
