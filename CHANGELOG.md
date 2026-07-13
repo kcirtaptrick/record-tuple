@@ -1,5 +1,11 @@
 # record-tuple
 
+## 3.0.1
+
+### Patch Changes
+
+- 56a3956: Add Temporal.Duration to registerTemporal
+
 ## 3.0.0
 
 ### Major Changes

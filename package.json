@@ -1,6 +1,6 @@
 {
   "name": "record-tuple",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Lightweight Record and Tuple data structures",
   "author": "Patrick Wang <patrick.bohan.wang@gmail.com>",
   "homepage": "https://github.com/kcirtaptrick/record-tuple#readme",
