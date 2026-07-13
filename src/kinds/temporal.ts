@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import Canonical from "../Canonical.js";
 
 const typeNames = [
@@ -8,7 +9,8 @@ const typeNames = [
   "PlainTime",
   "PlainYearMonth",
   "PlainMonthDay",
-] as const;
+  "Duration",
+] as const satisfies readonly (keyof typeof Temporal)[];
 
 type TemporalShape = {
   [K in (typeof typeNames)[number]]: {
