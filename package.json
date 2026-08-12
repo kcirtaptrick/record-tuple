@@ -42,6 +42,7 @@
   "scripts": {
     "prepack": "yarn build",
     "build": "tsdown",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.types.json",
     "test": "vitest run",
     "lint": "eslint \"./src/**/*.tsx?\" --max-warnings=0"
   },

@@ -1,4 +1,5 @@
-namespace Canonical {
+// Exported by name for module augmentation
+export namespace Canonical {
   export const kind: unique symbol = Symbol.for("record-tuple.canonicalKind");
 
   /**
@@ -53,6 +54,14 @@ namespace Canonical {
   })();
 
   export namespace Kind {
+    declare const entry: unique symbol;
+
+    export type Of<Raw extends object, Copy extends object = Raw> = {
+      [entry]: true;
+      raw: Raw;
+      canonical: Copy;
+    };
+
     export interface Registration<
       T extends object = object,
       Copy extends object = T
@@ -82,6 +91,60 @@ namespace Canonical {
       };
     }
   }
+
+  /**
+   * Type registry
+   * @example
+   *
+   *   import type { URLKinds, TemporalKinds } from "record-tuple/kinds";
+   *
+   *   declare module "record-tuple" {
+   *     namespace Canonical {
+   *       interface Kinds extends URLKinds, TemporalKinds<typeof Temporal> {
+   *         Money: Money;
+   *       }
+   *     }
+   *   }
+   */
+  export interface Kinds {}
+
+  export namespace Kinds {
+    export type KeyFor<T> = IsAny<T> extends true
+      ? never
+      : {
+          [K in Names]: T extends Normalize<Kinds[K]>["raw"] ? K : never;
+        }[Names];
+  }
+
+  type Names = keyof Kinds & string;
+
+  type Normalize<E> = E extends Kind.Of<any, any>
+    ? E
+    : E extends object
+    ? Kind.Of<E, E>
+    : never;
+
+  export type Resolved<T> = IsAny<T> extends true
+    ? never
+    : {
+        [K in Names]: T extends Normalize<Kinds[K]>["raw"]
+          ? Normalize<Kinds[K]>["canonical"] & { readonly [kind]: K }
+          : never;
+      }[Names];
+
+  export namespace Resolved {
+    export type OrIdentity<T> = T extends unknown
+      ? [Resolved<T>] extends [never]
+        ? T
+        : Resolved<T>
+      : never;
+
+    export type Mapped<T> = {
+      [Key in keyof T]: Canonical.Resolved.OrIdentity<T[Key]>;
+    };
+  }
+
+  type IsAny<T> = 0 extends 1 & T ? true : false;
 
   const tagOf = (value: unknown) =>
     (value as { [Symbol.toStringTag]?: unknown })?.[Symbol.toStringTag];
@@ -198,7 +261,15 @@ namespace Canonical {
       ? (value as { readonly [kind]: string })[kind]
       : undefined;
 
-  export const resolve = (value: unknown): object | undefined => {
+  export const resolve = <T>(
+    value: T
+  ): T extends unknown
+    ? [Resolved<T>] extends [never]
+      ? object | undefined
+      : Resolved<T>
+    : never => resolveUnknown(value) as any;
+
+  const resolveUnknown = (value: unknown): object | undefined => {
     if (!value || (typeof value !== "object" && typeof value !== "function"))
       return;
 

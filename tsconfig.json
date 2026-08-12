@@ -16,5 +16,6 @@
   },
   "references": [],
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  // Type tests augment Canonical.Kinds
+  "exclude": ["node_modules", "src/**/*.test-d.ts"]
 }

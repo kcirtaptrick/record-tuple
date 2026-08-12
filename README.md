@@ -14,6 +14,7 @@
   - [URL](#url)
   - [ReadonlyURL and ReadonlyURLSearchParams](#readonlyurl-and-readonlyurlsearchparams)
 - [Custom kinds](#custom-kinds)
+  - [Typing resolved values](#typing-resolved-values)
   - [Mutable types](#mutable-types)
   - [Self-interning classes](#self-interning-classes)
 - [Memory](#memory)
@@ -336,6 +337,53 @@ Canonical.kindOf(new Money(5, "USD")); // undefined (raw, not canonical)
 
 const canonical = Canonical.resolve(new Money(5, "USD"));
 Canonical.kindOf(canonical); // "Money"
+```
+
+### Typing resolved values
+
+Registering a kind happens at runtime, so type registration must happen separately.
+Augment `Canonical.Kinds` with an entry per kind, mapping its name to the type
+it interns:
+
+```ts
+declare module "record-tuple" {
+  namespace Canonical {
+    interface Kinds {
+      Money: Money;
+    }
+  }
+}
+
+// all four below are now Money & { [Canonical.kind]: "Money" }
+Canonical.resolve(new Money(5, "USD"));
+RecordTuple.deep({ price: new Money(5, "USD") }).price;
+Record({ price: new Money(5, "USD") }).price;
+Tuple(new Money(5, "USD"))[0];
+```
+
+The built-in kinds ship preset groups. Combine them with a comma:
+
+```ts
+import { registerTemporal, registerURL } from "record-tuple/kinds";
+import type { TemporalKinds, URLKinds } from "record-tuple/kinds";
+import { Temporal } from "temporal-polyfill";
+
+registerTemporal(Temporal);
+registerURL();
+
+declare module "record-tuple" {
+  namespace Canonical {
+    interface Kinds extends URLKinds, TemporalKinds<typeof Temporal> {}
+  }
+}
+```
+
+When multiple types resolve to one canonical type:
+
+```ts
+interface Kinds {
+  URL: Canonical.Kind.Of<URL | ReadonlyURL, ReadonlyURL>;
+}
 ```
 
 ### Mutable types

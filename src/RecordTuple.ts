@@ -17,23 +17,38 @@ function RecordTuple<T extends RecordTuple.Input>(input: T) {
 
 namespace RecordTuple {
   export namespace deep {
+    type Element<V> = V extends unknown
+      ? [Canonical.Resolved<V>] extends [never]
+        ? V extends Input
+          ? Result<V>
+          : V
+        : Canonical.Resolved<V>
+      : never;
+
     type DeepMap<T extends Tupleable> = T extends Tuple.Type
       ? T
       : T extends readonly [infer Item, ...infer Rest]
-      ? [Item extends Input ? Result<Item> : Item, ...DeepMap<Rest>]
+      ? [Element<Item>, ...DeepMap<Rest>]
       : T[number] extends never
       ? T
-      : T[number] extends Input
-      ? Result<T[number]>[]
-      : T;
+      : [Canonical.Resolved<T[number]>] extends [never]
+      ? T[number] extends Input
+        ? Result<T[number]>[]
+        : T
+      : Element<T[number]>[];
     type DeepRecord<T extends Recordable> = T extends Record.Type
       ? T
       : Record.Type<{
-          [Key in keyof T]: T[Key] extends Input ? Result<T[Key]> : T[Key];
+          [Key in keyof T]: Element<T[Key]>;
         }>;
-    export type Result<T extends Input> = T extends Tupleable
-      ? Tuple.Type<DeepMap<T>>
-      : DeepRecord<T>;
+
+    export type Result<T extends Input> = T extends unknown
+      ? [Canonical.Resolved<T>] extends [never]
+        ? T extends Tupleable
+          ? Tuple.Type<DeepMap<T>>
+          : DeepRecord<T>
+        : Canonical.Resolved<T>
+      : never;
   }
 
   export function deep<T extends RecordTuple.Input>(

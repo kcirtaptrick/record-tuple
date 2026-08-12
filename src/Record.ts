@@ -8,14 +8,14 @@ export type Recordable = {
 const symbolKeyError = "A Symbol cannot be used as a property key in a Record.";
 
 declare namespace Record {
-  type Type<T extends Recordable = Recordable> = T & {
-    readonly [Canonical.kind]: "record";
-  };
+  type Type<T extends Recordable = Recordable> =
+    Canonical.Resolved.Mapped<T> & {
+      readonly [Canonical.kind]: "record";
+    };
 }
 
 function Record<T extends Recordable>(obj: T): Record.Type<T> {
   if (Record.isRecord(obj)) return obj;
-
   if (Object.getOwnPropertySymbols(obj).length > 0)
     throw new TypeError(symbolKeyError);
 

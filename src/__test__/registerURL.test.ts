@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Canonical from "../Canonical";
+import Record from "../Record";
 import RecordTuple from "../RecordTuple";
 import Tuple from "../Tuple";
 import { ReadonlyURLSearchParams } from "../kinds/ReadonlyURLSearchParams";
@@ -22,6 +23,13 @@ describe("registerURL", () => {
     expect(Tuple(new URL("HTTPS://EXAMPLE.com/a"))).toBe(
       Tuple(new URL("https://example.com/a"))
     );
+
+    // Record stores the companion copy too, which is why Record.Type maps its
+    // members through Canonical.Resolved.OrIdentity rather than reporting the input type
+    const record = Record({ link: new URL("https://example.com/a?b=1") });
+    expect(record.link).toBeInstanceOf(ReadonlyURL);
+    expect(record.link).not.toBeInstanceOf(URL);
+    expect(Canonical.kindOf(record.link)).toBe("URL");
   });
 
   it("canonicalizes to a frozen ReadonlyURL copy", () => {
